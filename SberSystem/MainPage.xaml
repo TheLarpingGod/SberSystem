@@ -1,0 +1,83 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="SberSystem.MainPage"
+             Shell.NavBarIsVisible="False"
+             BackgroundColor="#F5F7F9">
+
+    <ScrollView>
+        <VerticalStackLayout Padding="24" Spacing="18" VerticalOptions="Center">
+            <Label Text="SberSystem"
+                   FontSize="30"
+                   FontAttributes="Bold"
+                   HorizontalOptions="Center"
+                   TextColor="#1B1F23" />
+
+            <Label Text="Локальная надстройка над СберБизнес"
+                   FontSize="14"
+                   HorizontalOptions="Center"
+                   TextColor="#667085" />
+
+            <Border Stroke="#D0D5DD"
+                    StrokeThickness="1"
+                    BackgroundColor="White"
+                    Padding="16">
+                <Border.StrokeShape>
+                    <RoundRectangle CornerRadius="12" />
+                </Border.StrokeShape>
+
+                <VerticalStackLayout Spacing="10">
+                    <Label Text="1. Клиентский сертификат (mTLS)"
+                           FontAttributes="Bold"
+                           FontSize="15"
+                           TextColor="#1B1F23" />
+
+                    <Label x:Name="CertStatusLabel"
+                           Text="Сертификат не загружен"
+                           FontSize="13"
+                           TextColor="#B42318" />
+
+                    <Entry x:Name="CertPasswordEntry"
+                           Placeholder="Пароль от .p12 / .pfx"
+                           IsPassword="True"
+                           TextColor="#1B1F23"
+                           PlaceholderColor="#98A2B3" />
+
+                    <Button x:Name="ImportCertButton"
+                            Text="Выбрать файл сертификата (.p12 / .pfx)"
+                            Clicked="OnImportCertClicked"
+                            BackgroundColor="#EAECF0"
+                            TextColor="#1B1F23"
+                            CornerRadius="8" />
+                </VerticalStackLayout>
+            </Border>
+
+            <Button x:Name="LoginButton"
+                    Text="Войти через СберБизнес ID"
+                    Clicked="OnLoginClicked"
+                    BackgroundColor="#21A038"
+                    TextColor="White"
+                    FontAttributes="Bold"
+                    HeightRequest="50"
+                    CornerRadius="12"
+                    IsEnabled="False" />
+
+            <ActivityIndicator x:Name="LoadingIndicator"
+                               IsRunning="False"
+                               IsVisible="False"
+                               Color="#21A038" />
+
+            <Button x:Name="DebugButton"
+                    Text="Debug-режим (без Сбера)"
+                    Clicked="OnDebugClicked"
+                    BackgroundColor="#FFF3E0"
+                    TextColor="#E65100"
+                    BorderColor="#FF9800"
+                    BorderWidth="1"
+                    FontAttributes="Bold"
+                    HeightRequest="44"
+                    CornerRadius="12"
+                    IsVisible="False" />
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

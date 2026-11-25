@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="SberSystem.Menu"
+             Title="Мониторинг поставщиков"
+             BackgroundColor="#F5F7F9">
+
+	<Grid RowDefinitions="Auto,*,Auto" Padding="16" RowSpacing="12">
+
+		<Border Grid.Row="0"
+                Stroke="#D0D5DD"
+                StrokeThickness="1"
+                BackgroundColor="White"
+                Padding="14">
+			<Border.StrokeShape>
+				<RoundRectangle CornerRadius="12" />
+			</Border.StrokeShape>
+
+			<Grid ColumnDefinitions="*,Auto" VerticalOptions="Center">
+				<VerticalStackLayout Spacing="4">
+					<Label Text="Контроль списаний"
+                           FontSize="16"
+                           FontAttributes="Bold"
+                           TextColor="#1B1F23" />
+					<Label x:Name="ThresholdLabel"
+                           Text="Порог аномалии: +15%"
+                           FontSize="13"
+                           TextColor="#667085" />
+				</VerticalStackLayout>
+
+				<Button Grid.Column="1"
+                        Text="Выйти"
+                        Clicked="OnLogoutClicked"
+                        BackgroundColor="#FEE4E2"
+                        TextColor="#B42318"
+                        FontSize="13"
+                        CornerRadius="8"
+                        Padding="12,6" />
+			</Grid>
+		</Border>
+
+		<CollectionView Grid.Row="1"
+                        x:Name="SuppliersCollection"
+                        SelectionMode="None">
+			<CollectionView.ItemsLayout>
+				<LinearItemsLayout Orientation="Vertical" ItemSpacing="10" />
+			</CollectionView.ItemsLayout>
+
+			<CollectionView.EmptyView>
+				<VerticalStackLayout VerticalOptions="Center" HorizontalOptions="Center" Spacing="8" Padding="24">
+					<Label Text="Поставщики пока не добавлены"
+                           FontSize="16"
+                           FontAttributes="Bold"
+                           TextColor="#475467"
+                           HorizontalTextAlignment="Center" />
+					<Label Text="Данные появятся после синхронизации выписки из СберБизнеса."
+                           FontSize="13"
+                           TextColor="#667085"
+                           HorizontalTextAlignment="Center" />
+				</VerticalStackLayout>
+			</CollectionView.EmptyView>
+
+			<CollectionView.ItemTemplate>
+				<DataTemplate>
+					<Border Stroke="#D0D5DD"
+                            StrokeThickness="1"
+                            BackgroundColor="White"
+                            Padding="14">
+						<Border.StrokeShape>
+							<RoundRectangle CornerRadius="12" />
+						</Border.StrokeShape>
+
+						<VerticalStackLayout Spacing="8">
+							<Grid ColumnDefinitions="*,Auto">
+								<Label Text="{Binding Name}"
+                                       FontSize="16"
+                                       FontAttributes="Bold"
+                                       TextColor="#1B1F23" />
+								<Label Grid.Column="1"
+                                       Text="{Binding StatusText}"
+                                       FontSize="13"
+                                       FontAttributes="Bold"
+                                       TextColor="{Binding StatusColor}" />
+							</Grid>
+
+							<Label Text="{Binding Inn, StringFormat='ИНН: {0}'}"
+                                   FontSize="12"
+                                   TextColor="#667085" />
+
+							<Grid ColumnDefinitions="*,*">
+								<Label Text="{Binding AverageAmount, StringFormat='Норма: {0:N0} ₽'}"
+                                       FontSize="13"
+                                       TextColor="#344054" />
+								<Label Grid.Column="1"
+                                       Text="{Binding LastAmount, StringFormat='Последнее: {0:N0} ₽'}"
+                                       FontSize="13"
+                                       FontAttributes="Bold"
+                                       TextColor="#1B1F23"
+                                       HorizontalTextAlignment="End" />
+							</Grid>
+
+							<Button Text="Найти альтернативы"
+									Clicked="OnFindAlternativesClicked"
+									CommandParameter="{Binding .}"
+									IsVisible="{Binding IsAnomaly}"
+									BackgroundColor="#ECFDF3"
+									TextColor="#067647"
+									FontSize="13"
+									CornerRadius="8"
+									HeightRequest="38" />
+
+							<VerticalStackLayout Grid.Row="2" Spacing="8">
+								<Button x:Name="SimulateAnomalyButton"
+										Text="Создать аномалию (Debug)"
+										Clicked="OnSimulateAnomalyClicked"
+										BackgroundColor="#FFF3E0"
+										TextColor="#E65100"
+										BorderColor="#FF9800"
+										BorderWidth="1"
+										FontAttributes="Bold"
+										HeightRequest="44"
+										CornerRadius="12"
+										IsVisible="False" />
+
+								<Button x:Name="SyncButton"
+										Text="Обновить выписку из СберБизнес"
+										Clicked="OnSyncClicked"
+										BackgroundColor="#21A038"
+										TextColor="White"
+										FontAttributes="Bold"
+										HeightRequest="48"
+										CornerRadius="12" />
+							</VerticalStackLayout>
+						</VerticalStackLayout>
+					</Border>
+				</DataTemplate>
+			</CollectionView.ItemTemplate>
+		</CollectionView>
+
+		<Button Grid.Row="2"
+                x:Name="SyncButton"
+                Text="Обновить выписку из СберБизнес"
+                Clicked="OnSyncClicked"
+                BackgroundColor="#21A038"
+                TextColor="White"
+                FontAttributes="Bold"
+                HeightRequest="48"
+                CornerRadius="12" />
+	</Grid>
+</ContentPage>
