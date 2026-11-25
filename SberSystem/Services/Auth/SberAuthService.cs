@@ -1,6 +1,7 @@
 ﻿using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace SberSystem.Services.Auth
@@ -32,29 +33,24 @@ namespace SberSystem.Services.Auth
 
         public async Task<(bool Success, string? Error)> LoginAsync()
         {
+            if (!SberAuthConfig.IsConfigured)
+                return (false, "Приложение ещё не подключено к Sber API. Укажите ClientId и ClientSecret в SberAuthConfig.");
+
+            if (OperatingSystem.IsWindows())
+                return (false, "Вход через СберБизнес ID доступен только в Android-версии приложения.");
+
             if (!_certService.HasCertificate)
                 return (false, "Сначала загрузите клиентский сертификат (.p12 / .pfx).");
 
-            var codeVerifier = GenerateRandomBase64Url(32);
-            var codeChallenge = GenerateCodeChallenge(codeVerifier);
-            var state = GenerateRandomBase64Url(16);
-
-            var authUrl = new Uri(
-                $"{SberAuthConfig.AuthorizeEndpoint}" +
-                $"?response_type=code" +
-                $"&client_id={Uri.EscapeDataString(SberAuthConfig.ClientId)}" +
-                $"&redirect_uri={Uri.EscapeDataString(SberAuthConfig.RedirectUri)}" +
-                $"&scope={Uri.EscapeDataString(SberAuthConfig.Scopes)}" +
-                $"&state={Uri.EscapeDataString(state)}" +
-                $"&code_challenge={Uri.EscapeDataString(codeChallenge)}" +
-                $"&code_challenge_method=S256");
+            var codeVerifier = SberAuthConfig.UsePkce ? GenerateRandomHex(32) : null;
+            var state = GenerateRandomHex(32);
 
             WebAuthenticatorResult result;
             try
             {
                 result = await WebAuthenticator.Default.AuthenticateAsync(
-                    authUrl,
-                    new Uri(SberAuthConfig.RedirectUri));
+                    BuildAuthorizeUrl(state, codeVerifier),
+                    new Uri(SberAuthConfig.CallbackUri));
             }
             catch (TaskCanceledException)
             {
@@ -63,6 +59,22 @@ namespace SberSystem.Services.Auth
             catch (Exception ex)
             {
                 return (false, $"Ошибка открытия браузера: {ex.Message}");
+            }
+
+            return await FinishLoginAsync(result, state, codeVerifier);
+        }
+
+        private async Task<(bool Success, string? Error)> FinishLoginAsync(
+            WebAuthenticatorResult result, string state, string? codeVerifier)
+        {
+            // При ошибке Сбер возвращает error и error_description, а state, по спецификации, не гарантирует.
+            // Причину отказа показываем без проверки state: на этом пути ничего не обменивается и не сохраняется.
+            if (result.Properties.TryGetValue("error", out var error))
+            {
+                var reason = result.Properties.TryGetValue("error_description", out var errorDescription)
+                    ? errorDescription
+                    : error;
+                return (false, $"СберБизнес ID отклонил вход: {reason}");
             }
 
             if (!result.Properties.TryGetValue("state", out var returnedState) || returnedState != state)
@@ -135,25 +147,18 @@ namespace SberSystem.Services.Auth
             SecureStorage.Default.Remove(ExpiresAtKey);
         }
 
-        private async Task<(bool Success, string? Error)> ExchangeCodeForTokensAsync(string code, string codeVerifier)
+        private async Task<(bool Success, string? Error)> ExchangeCodeForTokensAsync(string code, string? codeVerifier)
         {
             try
             {
                 using var client = await CreateMtlsHttpClientAsync();
-                using var content = new FormUrlEncodedContent(new Dictionary<string, string>
-                {
-                    ["grant_type"] = "authorization_code",
-                    ["client_id"] = SberAuthConfig.ClientId,
-                    ["redirect_uri"] = SberAuthConfig.RedirectUri,
-                    ["code"] = code,
-                    ["code_verifier"] = codeVerifier
-                });
+                using var content = new FormUrlEncodedContent(BuildCodeTokenRequest(code, codeVerifier));
 
                 var response = await client.PostAsync(SberAuthConfig.TokenEndpoint, content);
                 if (!response.IsSuccessStatusCode)
                 {
-                    var body = await response.Content.ReadAsStringAsync();
-                    return (false, $"Сбер отклонил обмен токена ({(int)response.StatusCode}): {body}");
+                    var reason = await ReadBankErrorAsync(response);
+                    return (false, $"Сбер отклонил обмен токена ({(int)response.StatusCode}): {reason}");
                 }
 
                 var tokenData = await response.Content.ReadFromJsonAsync<SberTokenResponse>();
@@ -169,17 +174,39 @@ namespace SberSystem.Services.Auth
             }
         }
 
+        // Параметры по спецификации: https://developers.sber.ru/docs/ru/sber-api/specifications/oauth/oauth-token-post
+        private static Dictionary<string, string> BuildCodeTokenRequest(string code, string? codeVerifier)
+        {
+            var formData = new Dictionary<string, string>
+            {
+                ["grant_type"] = "authorization_code",
+                ["client_id"] = SberAuthConfig.ClientId,
+                ["client_secret"] = SberAuthConfig.ClientSecret,
+                ["redirect_uri"] = SberAuthConfig.RedirectUri,
+                ["code"] = code
+            };
+
+            // code_verifier обязателен, только если в запросе авторизации был code_challenge
+            if (codeVerifier is not null)
+                formData["code_verifier"] = codeVerifier;
+
+            return formData;
+        }
+
+        private static Dictionary<string, string> BuildRefreshTokenRequest(string refreshToken) => new()
+        {
+            ["grant_type"] = "refresh_token",
+            ["client_id"] = SberAuthConfig.ClientId,
+            ["client_secret"] = SberAuthConfig.ClientSecret,
+            ["refresh_token"] = refreshToken
+        };
+
         private async Task<bool> RefreshTokensAsync(string refreshToken)
         {
             try
             {
                 using var client = await CreateMtlsHttpClientAsync();
-                using var content = new FormUrlEncodedContent(new Dictionary<string, string>
-                {
-                    ["grant_type"] = "refresh_token",
-                    ["client_id"] = SberAuthConfig.ClientId,
-                    ["refresh_token"] = refreshToken
-                });
+                using var content = new FormUrlEncodedContent(BuildRefreshTokenRequest(refreshToken));
 
                 var response = await client.PostAsync(SberAuthConfig.TokenEndpoint, content);
                 if (!response.IsSuccessStatusCode)
@@ -211,10 +238,29 @@ namespace SberSystem.Services.Auth
                 await SecureStorage.Default.SetAsync(RefreshTokenKey, token.RefreshToken);
         }
 
-        private static string GenerateRandomBase64Url(int byteLength)
+        // 64 символа [0-9A-F]: проходят проверки Сбера для state (^[a-zA-Z0-9]{36,}$)
+        // и code_verifier (^[a-zA-Z0-9]+$), в отличие от base64url с символами '-' и '_'.
+        private static string GenerateRandomHex(int byteLength) =>
+            Convert.ToHexString(RandomNumberGenerator.GetBytes(byteLength));
+
+        // Параметры по спецификации: https://developers.sber.ru/docs/ru/sber-api/specifications/oauth/oauth-authorize-get
+        private static Uri BuildAuthorizeUrl(string state, string? codeVerifier)
         {
-            var bytes = RandomNumberGenerator.GetBytes(byteLength);
-            return Base64UrlEncode(bytes);
+            var query =
+                $"?response_type=code" +
+                $"&client_id={Uri.EscapeDataString(SberAuthConfig.ClientId)}" +
+                $"&redirect_uri={Uri.EscapeDataString(SberAuthConfig.RedirectUri)}" +
+                $"&scope={Uri.EscapeDataString(SberAuthConfig.Scopes)}" +
+                $"&state={state}";
+
+            if (codeVerifier is not null)
+            {
+                query +=
+                    $"&code_challenge={GenerateCodeChallenge(codeVerifier)}" +
+                    $"&code_challenge_method=S256";
+            }
+
+            return new Uri(SberAuthConfig.AuthorizeEndpoint + query);
         }
 
         private static string GenerateCodeChallenge(string codeVerifier)
@@ -229,6 +275,27 @@ namespace SberSystem.Services.Auth
                 .Replace('+', '-')
                 .Replace('/', '_');
 
+        // Банк описывает ошибку в JSON: {"error": "...", "error_description": "..."}
+        private static async Task<string> ReadBankErrorAsync(HttpResponseMessage response)
+        {
+            var body = await response.Content.ReadAsStringAsync() ?? string.Empty;
+
+            try
+            {
+                var error = JsonSerializer.Deserialize<SberErrorResponse>(body);
+                if (!string.IsNullOrEmpty(error?.ErrorDescription))
+                    return $"{error.ErrorDescription} ({error.Error})";
+                if (!string.IsNullOrEmpty(error?.Error))
+                    return error.Error;
+            }
+            catch (JsonException)
+            {
+                // Тело ответа не в формате JSON — показываем его как есть.
+            }
+
+            return body.Length > 300 ? body[..300] + "…" : body;
+        }
+
         private sealed class SberTokenResponse
         {
             [JsonPropertyName("access_token")]
@@ -239,6 +306,15 @@ namespace SberSystem.Services.Auth
 
             [JsonPropertyName("expires_in")]
             public int ExpiresIn { get; set; }
+        }
+
+        private sealed class SberErrorResponse
+        {
+            [JsonPropertyName("error")]
+            public string? Error { get; set; }
+
+            [JsonPropertyName("error_description")]
+            public string? ErrorDescription { get; set; }
         }
     }
 }

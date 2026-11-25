@@ -1,6 +1,7 @@
 ﻿using Android.App;
 using Android.Content;
 using Android.Content.PM;
+using SberSystem.Services.Auth;
 
 namespace SberSystem.Platforms.Android
 {
@@ -8,6 +9,6 @@ namespace SberSystem.Platforms.Android
     [IntentFilter(
     [Intent.ActionView],
     Categories = new[] { Intent.CategoryDefault, Intent.CategoryBrowsable },
-    DataScheme = "sbermonitor")]
+    DataScheme = SberAuthConfig.CallbackScheme)]
     public class WebAuthenticatorCallbackActivity : Microsoft.Maui.Authentication.WebAuthenticatorCallbackActivity;
 }
